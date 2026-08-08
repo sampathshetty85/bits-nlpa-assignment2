@@ -172,34 +172,45 @@ TF-IDF (unigrams + bigrams) + Logistic Regression. Fast, interpretable, no GPU.
 - Tool 1: search_solutions_db
 - Tool 2: create_support_ticket
 - Tool 3: check_ticket_status
-- Tool router
+- Tool router (including explicit "no tool needed" path)
 - Response generator
-- 5-query test table
-- Task 3 explanation cell (tool use vs pure text generation)
+- 8-query test table (covers all 3 tools + no-tool + ambiguous-tool cases)
+- Task 3 explanation cell (tool use vs pure text generation) — standalone cell, not merged with intro
 - Task 3 inference cell (does tool use reduce hallucination and improve trust?)
 
 ### Tool decisions
 All tools are pure Python (dict-backed). No external APIs.
-> Future improvement: Replace generate_response() with LLM call. Router and DST unchanged.
+
+### Test query coverage (8 queries)
+| # | Scenario | Tool fired |
+|---|----------|-----------|
+| 1 | WiFi issue, all slots filled | search_solutions_db |
+| 2 | Blue screen error with error code | search_solutions_db |
+| 3 | Unresolved issue after steps, needs ticket | create_support_ticket |
+| 4 | Escalation request, urgent | create_support_ticket |
+| 5 | Ticket status check with ID | check_ticket_status |
+| 6 | Ticket status check without ID | check_ticket_status (after asking for ID) |
+| 7 | Greeting — no tool needed | None |
+| 8 | Out-of-scope query — no tool needed | None |
 
 ### Output table columns (exact match to assignment spec)
 `User Query | Required Tool | Tool Input | Tool Output | Generated Response`
 
 ### Notebook cells
-35. [Markdown] Section intro + EXPLANATION: how tool use improves factuality vs pure text generation
-36. [Code] Tool 1: search_solutions_db
-37. [Markdown] Tool 1 explanation + when it fires
-38. [Code] Tool 2: create_support_ticket
-39. [Markdown] Tool 2 explanation + when it fires
-40. [Code] Tool 3: check_ticket_status
-41. [Markdown] Tool 3 explanation + when it fires
-42. [Markdown] Tool router rationale
-43. [Code] route_to_tool() function
-44. [Code] Routing decision table
-45. [Markdown] Response generator rationale + future improvement note (LLM)
-46. [Code] generate_response() function
-47. [Code] 5-query test table
-48. [Markdown] Test results analysis
+35. [Markdown] Section intro — what this section builds and why tool use matters
+36. [Code] Tool 1: search_solutions_db (dict-backed knowledge base)
+37. [Markdown] Tool 1 explanation — what it returns, when it fires
+38. [Code] Tool 2: create_support_ticket (generates TK-XXXX ID, stores ticket)
+39. [Markdown] Tool 2 explanation — what it returns, when it fires
+40. [Code] Tool 3: check_ticket_status (looks up ticket by ID)
+41. [Markdown] Tool 3 explanation — what it returns, when it fires
+42. [Markdown] Tool router rationale — how the router decides which tool (or none) to call
+43. [Code] route_to_tool() function + routing decision table (includes no-tool rows for greet, out_of_scope, end_session)
+44. [Markdown] Response generator rationale
+45. [Code] generate_response() function
+46. [Code] 8-query test table (exact spec columns)
+47. [Markdown] Test results analysis
+48. [Markdown] EXPLANATION: how tool use improves factuality and task completion vs pure text generation
 49. [Markdown] INFERENCE: does tool integration reduce hallucinated responses and improve user trust?
 
 ---
@@ -207,45 +218,65 @@ All tools are pure Python (dict-backed). No external APIs.
 ## Section 5 — Memory, Personalization, Ambiguity & Safety
 
 ### What gets built
-- ShortTermMemory class
-- UserProfile class (explicitly framed as preference memory)
-- Ambiguity detector
-- Safety filter
-- full_pipeline() function
-- 5 edge case tests
-- Task 4 explanation cells (personalisation vs over-personalisation; why ambiguity handling is essential)
-- Task 4 inference cell (does system respond more responsibly after memory/safety?)
+- ShortTermMemory class (current conversation turn history)
+- UserProfile class (preference memory: device, OS, app preferences, past tickets)
+- detect_ambiguity() function
+- safety_check() function
+- full_pipeline() — wires safety → NLU → DST → tool router → response, with memory read/write
+- 5 edge cases with output table
+- 2 EXPLANATION cells (personalisation; ambiguity handling)
+- INFERENCE cell
+
+### full_pipeline() wiring (explicit)
+```
+1.  safety_check(user_input)          → if unsafe: return safe response immediately (early exit)
+2.  ShortTermMemory.add(user_input)   → log turn
+3.  extract_entities(user_input)      → slot dict
+4.  predict_intent(user_input)        → intent label + confidence probability
+5.  detect_ambiguity(...)             → if ambiguous: return clarification (early exit)
+    - skips length/entity gates for ENTITY_FREE_INTENTS (greet, out_of_scope, etc.)
+6.  UserProfile.load_slots()          → merge saved preferences; flag contradictions
+7.  DialogueStateTracker.update()     → next_action, missing slots, state
+8.  UserProfile.update(new_slots)     → persist new/corrected slot values
+9.  route_to_tool(next_action, slots) → tool_name, tool_input, tool_output
+10. generate_response(...)            → final user-facing string
+```
 
 ### Edge cases
-| # | Input | Issue | Response |
-|---|-------|-------|----------|
-| 1 | "Fix my error" | Missing slots | Clarification question |
-| 2 | "Windows laptop… macOS crashed" | Contradictory OS | Conflict resolution |
-| 3 | "It's not working" | Ambiguous | Detail request |
-| 4 | "Book me a flight" | Out-of-scope | Polite decline |
-| 5 | Profanity/threat | Safety blocklist | Escalation to human |
+| # | Input | Pre-loaded context | Issue | Expected Response |
+|---|-------|-------------------|-------|-------------------|
+| 1 | "Fix my error" | none | Missing slots | Clarification question |
+| 2 | "Actually it's macOS" | os=Windows pre-loaded | Contradictory OS | Conflict flagged, user asked to confirm |
+| 3 | "It's not working" | none | Ambiguous (too short, no entity) | Detail request |
+| 4 | "Book me a flight to Dubai" | none | Out-of-scope | Polite decline |
+| 5 | Profanity + threat | none | Safety blocklist hit | Escalation to human agent |
+
+### Updated Memory column content
+Shows which UserProfile fields changed after the turn, e.g.:
+- `device_type=laptop added` — new slot saved to profile
+- `os=Windows 11 added` — new slot saved to profile
+- `no change` — no new preference slots learned this turn
 
 ### Output table columns (exact match to assignment spec)
 `User Input | Detected Issue | System Decision | Clarification / Safe Response | Updated Memory`
 
 ### Notebook cells
-50. [Markdown] Section intro + memory rationale
-51. [Code] ShortTermMemory class
-52. [Code] UserProfile class (framed explicitly as preference memory: stores device, OS, app preferences, past tickets)
-53. [Markdown] EXPLANATION: useful personalisation vs unsafe over-personalisation + personalization walkthrough example
-54. [Markdown] Ambiguity detector rationale + EXPLANATION: why ambiguity handling is essential in real-world systems
-55. [Code] detect_ambiguity() function
-56. [Markdown] Ambiguity detection examples
-57. [Markdown] Safety filter rationale
-58. [Code] safety_check() function
+50. [Markdown] Section intro — what this section adds on top of the existing pipeline
+51. [Code] ShortTermMemory class (stores turn-by-turn history for current session)
+52. [Code] UserProfile class (preference memory: device_type, os, app_name, past_tickets — persists across turns)
+53. [Markdown] EXPLANATION: useful personalisation vs unsafe over-personalisation (assignment deliverable)
+54. [Markdown] Ambiguity detector rationale — what makes an utterance ambiguous, how the detector works
+55. [Markdown] EXPLANATION: why ambiguity handling is essential in real-world conversational systems (assignment deliverable)
+56. [Code] detect_ambiguity() function + 4 inline examples (ambiguous and non-ambiguous)
+57. [Markdown] Safety filter rationale — what categories of input it blocks and why
+58. [Code] safety_check() function (keyword blocklist + PII regex)
 59. [Markdown] Safety filter analysis
-60. [Markdown] Full pipeline assembly description
-61. [Code] full_pipeline() function
-62. [Markdown] Edge case intro
-63. [Code] 5 edge case runs
-64. [Code] Edge case output table
-65. [Markdown] Edge case analysis
-66. [Markdown] INFERENCE: does the system respond more responsibly after adding memory, clarification, and safety control?
+60. [Markdown] Full pipeline assembly — diagram of all components connected in order
+61. [Code] full_pipeline() — complete end-to-end: safety → NLU → DST → tool router → response + UserProfile read/write
+62. [Markdown] Edge case intro — why these 5 cases stress-test the system
+63. [Code] 5 edge case runs + output table in one cell (User Input | Detected Issue | System Decision | Clarification / Safe Response | Updated Memory)
+64. [Markdown] Edge case analysis
+65. [Markdown] INFERENCE: does the system respond more responsibly after adding memory, clarification, and safety?
 
 ---
 
@@ -349,7 +380,7 @@ All tools are pure Python (dict-backed). No external APIs.
 
 | Section | Current | Future |
 |---------|---------|--------|
-| 3 — Dataset | 50 hand-crafted utterances | CLINC150 via HuggingFace |
+| 3 — Dataset | 90 hand-crafted utterances | CLINC150 via HuggingFace |
 | 3 — Classifier | TF-IDF + LogReg | Fine-tuned BERT |
 | 4 — Responses | Template strings | LLM call (Claude/GPT-4o) |
 | 6 — Scoring | Manual variables | LLM-based evaluator |

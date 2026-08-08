@@ -25,8 +25,8 @@ Each entry records:
 | 1. Environment Setup | ✅ Complete | 8 | Env check, optional install, imports, spaCy load |
 | 2. Domain Design | ✅ Complete | 16 | Intents, slots, 3 conversations, state transitions, failure cases + explanation + inference cells |
 | 3. NLU Pipeline | ✅ Complete | 17 | Utterances, classifier, heatmap, extractor, DST, 10-conv test, explanation + inference cells |
-| 4. Tool Generation | ⏳ Pending | 0 | — |
-| 5. Memory & Safety | ⏳ Pending | 0 | — |
+| 4. Tool Generation | ✅ Complete | 15 | 3 tools, router, response generator, 8-query test, explanation + inference cells |
+| 5. Memory & Safety | ✅ Complete | 16 | ShortTermMemory, UserProfile, detect_ambiguity, safety_check, full_pipeline (10-step), 5 edge cases, explanation + inference cells |
 | 6. Evaluation | ⏳ Pending | 0 | — |
 | 7. Conclusion | ⏳ Pending | 0 | — |
 
@@ -51,7 +51,67 @@ Each entry records:
 
 <!-- Entries will be added below as each section is built -->
 
-### 2026-08-08 — Section 3 Post-Build: Bug Fixes + Accuracy Improvements
+### 2026-08-08 — Section 5 Post-Build Fixes
+- **Bugs found and fixed (3):**
+  1. `full_pipeline()` did not call `detect_ambiguity()` — ambiguity was only post-hoc labelling in the edge case table, not actual pipeline behaviour. Fixed by wiring detect_ambiguity() as Step 5 (early-exit gate before DST).
+  2. `full_pipeline()` had no contradiction detection — stored profile slots were merged silently. Fixed by comparing new vs stored slots at Step 6 and flagging mismatches.
+  3. Edge case 3 input ("It's not working", later "Something is broken") misclassified as `greet`/`confirm_resolution` (both in ENTITY_FREE_INTENTS), bypassing ambiguity gate. Fixed by using "My screen keeps flickering" — classifies as `report_issue` with confidence 0.22 (< 0.40 threshold), triggering the confidence gate.
+- **`detect_ambiguity()` improved:** Added `ENTITY_FREE_INTENTS` set; length and entity gates now skip for `greet`, `out_of_scope`, `end_session`, `confirm_resolution`, `escalate_issue` — these are valid without entity slots.
+- **Pipeline expanded from 9 to 10 steps:** ambiguity check inserted as Step 5 (after intent prediction, before DST).
+- **All 5 edge cases now demonstrate correct behaviour:**
+  - Case 1: length gate → clarification
+  - Case 2: stored/new slot mismatch → contradiction flagged, value updated
+  - Case 3: low confidence (0.22) → confidence gate → clarification
+  - Case 4: out_of_scope intent → polite decline
+  - Case 5: keyword blocklist hit → safety block before NLU
+- **Kernelspec fixed:** notebook was referencing `conda-base-py` (missing on this machine); updated to `python3`.
+- **All 68 cells execute without errors.**
+
+
+- **Cells added:** 16 (9 markdown, 7 code)
+- **What was built:**
+  - Section intro markdown (4 capabilities overview)
+  - `ShortTermMemory` class — turn-by-turn history, `add()`, `last_user_turn()`, `get_history()`, `summary()`
+  - `UserProfile` class — preference memory: device_type, os, app_name, past_tickets; `update()` (no-overwrite), `load_slots()`, `summary()`
+  - EXPLANATION: useful personalisation vs unsafe over-personalisation (session-scoped, explicit-only, no inference)
+  - Ambiguity detector rationale markdown (3 patterns: too short, no entity, low confidence)
+  - EXPLANATION: why ambiguity handling is essential in real-world systems (silent wrong branch vs repetitive loop)
+  - `detect_ambiguity()` — 3 gates: length (<4 tokens after stopword removal), no entity, confidence < 0.40; inline examples
+  - Safety filter rationale markdown (blocklist vs classifier rationale, limitations acknowledged)
+  - `safety_check()` — keyword blocklist (18 terms) + 3 PII regex patterns (credit card, SSN, passport); inline tests
+  - Safety filter analysis markdown
+  - Full pipeline assembly diagram markdown (9 explicit steps)
+  - `full_pipeline()` — 9-step wiring: safety → STM log → entity extract → intent → profile load → DST → profile save → tool route → response; smoke test
+  - Edge case intro markdown (5 cases with challenge table)
+  - 5 edge cases + output table (User Input | Detected Issue | System Decision | Clarification/Safe Response | Updated Memory)
+  - Edge case analysis markdown
+  - INFERENCE: memory, clarification, safety improve reliability; remaining limitations acknowledged
+- **No future improvement notes in notebook**
+- **Status:** ✅ Complete
+
+
+- **Cells added:** 15 (9 markdown, 6 code)
+- **What was built:**
+  - Section intro markdown
+  - `search_solutions_db` — dict-backed knowledge base, priority lookup (error_code → app_name → os → default), covers 6 issue categories
+  - Tool 1 explanation markdown
+  - `create_support_ticket` — generates sequential TK-XXXX IDs, SLA by urgency, stores in shared TICKET_REGISTRY
+  - Tool 2 explanation markdown
+  - `check_ticket_status` — looks up by ID, pre-seeded with TK-2087 and TK-3310 demo tickets, graceful not-found handling
+  - Tool 3 explanation markdown
+  - Tool router rationale markdown (including explicit "no tool needed" path)
+  - `route_to_tool()` + routing decision table (9 rows, 5 no-tool paths explicitly shown)
+  - Response generator rationale markdown
+  - `generate_response()` — templates for all tool-backed and no-tool actions, name personalisation
+  - 8-query test table (exact spec columns: User Query | Required Tool | Tool Input | Tool Output | Generated Response)
+  - Test results analysis markdown
+  - EXPLANATION: how tool use improves factuality and task completion vs pure text generation
+  - INFERENCE: hallucination reduction, trust through specificity, remaining limitations
+- **Test results:** 8/8 routing correct, all tool calls return expected outputs
+- **No future improvement notes in notebook**
+- **Status:** ✅ Complete
+
+
 - **Bugs fixed (4):**
   1. `user_name` — spaCy tagged "WiFi" as PERSON; fixed by running name-phrase regex first, NER as fallback with tech-word exclusion set
   2. `user_name` — `re.IGNORECASE` on capture group matched "running" as a name; fixed by removing IGNORECASE from the capture pattern
