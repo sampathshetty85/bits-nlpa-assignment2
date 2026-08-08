@@ -27,8 +27,8 @@ Each entry records:
 | 3. NLU Pipeline | ✅ Complete | 17 | Utterances, classifier, heatmap, extractor, DST, 10-conv test, explanation + inference cells |
 | 4. Tool Generation | ✅ Complete | 15 | 3 tools, router, response generator, 8-query test, explanation + inference cells |
 | 5. Memory & Safety | ✅ Complete | 16 | ShortTermMemory, UserProfile, detect_ambiguity, safety_check, full_pipeline (10-step), 5 edge cases, explanation + inference cells |
-| 6. Evaluation | ⏳ Pending | 0 | — |
-| 7. Conclusion | ⏳ Pending | 0 | — |
+| 6. Evaluation | ✅ Complete | 12 | Interactive demo, 10 scripted convs, automated scoring (8 dims), manual scores (2 dims), confusion matrix, bar chart, parameter summary table, analysis + inference cells |
+| 7. Conclusion | ✅ Complete | 4 | Deployment verdict, limitations table, improvements table, references |
 
 ---
 
@@ -50,6 +50,35 @@ Each entry records:
 ## Build Entries
 
 <!-- Entries will be added below as each section is built -->
+
+### 2026-08-08 — Section 7: Conclusion
+- **Cells added:** 4 (4 markdown, 0 code)
+- **What was built:**
+  - Deployment readiness verdict (controlled pilot ready; not unrestricted production)
+  - Limitations table (8 limitations: classifier accuracy, template responses, session-only memory, no auth, keyword extractor, single-language, simulated tools, manual eval)
+  - Improvements table (9 improvements ranked by priority: sentence-transformer, LLM responses, DB persistence, auth, real APIs, expanded dataset, LLM eval, multilingual, escalation routing)
+  - References (10 references: dialogue systems research papers, all libraries used, datasets cited)
+- **Status:** ✅ Complete
+
+### 2026-08-08 — Section 6: Evaluation
+- **Cells added:** 12 (5 markdown, 7 code)
+- **Bug fixed:** `score_task_completion` and `score_tool_selection` used wrong `next_action` names. Fixed by auditing actual DST `_decide_action()` return values and aligning `TASK_COMPLETING_ACTIONS` set and `TOOL_FOR_ACTION` mapping.
+- **What was built:**
+  - Section intro + EXPLANATION: why accuracy alone is insufficient (covers task success, context continuity, safety, user satisfaction — all 4 required by assignment)
+  - `run_interactive()` — live chatbot loop wiring all pipeline components; uncomment to launch in Virtual Lab
+  - Transition markdown (screenshot instructions for Virtual Lab submission)
+  - 10 scripted conversations with ground truth labels (intent, entity_expected, task_completed, tool_expected, ambiguous_turns, unsafe_turns)
+  - Automated scoring for 8 dimensions (D1 Intent, D2 Entity, D3 DST, D4 Task, D5 Tool, D7 Context, D8 Ambiguity, D9 Safety)
+  - Manual score variables for D6 (Response Relevance) and D10 (User Satisfaction) with scoring rubric comments
+  - Manual scoring rationale markdown (why subjective dims can't be automated; LLM evaluator as future improvement)
+  - `Parameter | Score / Observation` summary table — direct match to assignment Task 5 output format
+  - Seaborn confusion matrix heatmap across all 23 evaluation turns
+  - Dimension score bar chart (colour-coded: blue ≥0.80, orange ≥0.60, red <0.60)
+  - Chart analysis markdown
+  - INFERENCE: deployment readiness verdict, what works, 5 limitations listed
+- **Final scores:** D1=0.72, D2=0.82, D3=1.00, D4=0.80, D5=0.80, D6=0.84, D7=0.80, D8=1.00, D9=1.00, D10=0.78 → Overall mean 0.86
+- **All 84 cells execute without errors**
+- **Status:** ✅ Complete
 
 ### 2026-08-08 — Section 5 Post-Build Fixes
 - **Bugs found and fixed (3):**
